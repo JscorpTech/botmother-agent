@@ -7,6 +7,7 @@ conversational flow generation.
 from __future__ import annotations
 
 import json
+import os
 import uuid
 from typing import Any
 
@@ -21,10 +22,13 @@ from botmother_agent import database as db
 
 # ── App ──────────────────────────────────────────────────────────────────
 
+ROOT_PATH = os.environ.get("ROOT_PATH", "")
+
 app = FastAPI(
     title="Botmother Flow Agent API",
     description="Conversational AI agent that generates Telegram bot flow JSON for the Botmother engine",
     version="0.2.0",
+    root_path=ROOT_PATH,
 )
 
 app.add_middleware(

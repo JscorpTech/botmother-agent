@@ -1,0 +1,60 @@
+name: Test on PR
+
+on:
+  pull_request:
+    branches:
+      - main
+      - dev
+
+env:
+  PROJECT_NAME: botmother-agent
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Verify imports
+        run: |
+          python -c "
+          from botmother_agent.agent import create_agent
+          from botmother_agent.api import app
+          from botmother_agent.auth import decode_token
+          from botmother_agent.database import init_db
+          from botmother_agent.schema import Flow, Node, Edge
+          print('All imports OK')
+          "
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          load: true
+          push: false
+          tags: ${{ env.PROJECT_NAME }}:test
+
+      - name: Run health check
+        run: |
+          docker run -d --name agent-test \
+            -e OPENAI_API_KEY=sk-test \
+            -p 8000:8000 \
+            ${{ env.PROJECT_NAME }}:test
+
+          sleep 5
+
+          curl -f http://localhost:8000/health || (docker logs agent-test && exit 1)
+
+          docker stop agent-test
+          docker rm agent-test
