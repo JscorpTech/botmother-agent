@@ -33,6 +33,7 @@ jobs:
           from botmother_agent.auth import decode_token
           from botmother_agent.database import init_db
           from botmother_agent.schema import Flow, Node, Edge
+          from botmother_agent.validator import validate_flow
           print('All imports OK')
           "
 
@@ -49,6 +50,7 @@ jobs:
         run: |
           docker run -d --name agent-test \
             -e OPENAI_API_KEY=sk-test \
+            -e DATABASE_URL="" \
             -p 8000:8000 \
             ${{ env.PROJECT_NAME }}:test
 
