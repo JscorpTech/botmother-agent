@@ -32,7 +32,11 @@ class AgentState(BaseModel):
 
 def _get_llm() -> ChatOpenAI:
     model = os.environ.get("BOTMOTHER_MODEL", "gpt-4o")
-    return ChatOpenAI(model=model, temperature=0.3)
+    base_url = os.environ.get("OPENAI_API_BASE")
+    kwargs: dict[str, Any] = {"model": model, "temperature": 0.3}
+    if base_url:
+        kwargs["base_url"] = base_url
+    return ChatOpenAI(**kwargs)
 
 
 # ── Node functions ───────────────────────────────────────────────────────
