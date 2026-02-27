@@ -22,8 +22,8 @@ env/
 # Environment
 .env
 
-# Generated flows (optional - uncomment to ignore)
-# flows/*.json
+# Database
+data/
 
 # OS
 .DS_Store
