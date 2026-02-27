@@ -123,17 +123,17 @@ def _phase_instructions(state: AgentState) -> str:
     if state.phase == "chat":
         return (
             "\n## Current Phase: CHAT\n"
-            "You're having a general conversation. If the user mentions creating a bot, "
-            "switch to gathering requirements. Ask 1-2 clarifying questions at a time.\n"
-            "If you already have enough information to build the flow, generate the JSON directly."
+            "You're chatting with the user. If they mention creating a bot or describe any bot functionality, "
+            "generate the flow JSON immediately using what they told you. Fill in sensible defaults. "
+            "Do NOT ask clarifying questions unless the request is completely unclear."
         )
     elif state.phase == "gathering":
         reqs = "\n".join(f"- {r}" for r in state.requirements) if state.requirements else "None yet"
         return (
             f"\n## Current Phase: GATHERING REQUIREMENTS\n"
             f"Requirements collected so far:\n{reqs}\n\n"
-            "Continue asking clarifying questions. When you have enough, generate the flow JSON.\n"
-            "Ask about: commands, button interactions, data to collect, conditions, database needs."
+            "You have enough context. Generate the flow JSON now. "
+            "Use sensible defaults for anything not explicitly mentioned."
         )
     elif state.phase == "generating":
         return "\n## Current Phase: GENERATING\nGenerate the flow JSON now."
@@ -147,14 +147,12 @@ def _detect_phase(state: AgentState, response_text: str) -> str:
 
     lower = response_text.lower()
     bot_keywords = ["bot", "бот", "flow", "флоу", "yaratish", "создать", "create"]
-    question_markers = ["?", "qanday", "какой", "nechta", "сколько", "what", "which", "how many"]
 
     if state.phase == "chat":
-        if any(k in lower for k in bot_keywords) and any(q in lower for q in question_markers):
-            return "gathering"
-    elif state.phase == "gathering":
-        if state.turn_count > 6:
+        if any(k in lower for k in bot_keywords):
             return "generating"
+    elif state.phase == "gathering":
+        return "generating"
 
     return state.phase
 

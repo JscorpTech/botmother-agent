@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import time
 from pathlib import Path
 from typing import Any
 
@@ -11,7 +12,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
-_security = HTTPBearer()
+_security = HTTPBearer(auto_error=True)
 
 # ── Public key loading ───────────────────────────────────────────────────
 
@@ -75,9 +76,12 @@ def decode_token(token: str) -> dict[str, Any]:
             token,
             public_key,
             algorithms=["RS256"],
-            options={"verify_exp": True, "verify_aud": False},
+            options={
+                "verify_exp": True,
+                "verify_aud": False,
+                "require": ["exp"],
+            },
         )
-        return payload
     except jwt.ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -88,6 +92,21 @@ def decode_token(token: str) -> dict[str, Any]:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Invalid token: {e}",
         )
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication failed",
+        )
+
+    # Manual exp safety check
+    exp = payload.get("exp")
+    if exp is not None and time.time() > exp:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token expired",
+        )
+
+    return payload
 
 
 def get_current_user(
