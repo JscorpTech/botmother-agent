@@ -10,10 +10,7 @@ from typing import Any
 import psycopg2
 import psycopg2.extras
 
-_DATABASE_URL = os.environ.get(
-    "DATABASE_URL",
-    "postgresql://postgres:***REDACTED***@database-1.c6ti8kiike3e.us-east-1.rds.amazonaws.com:5432/agent",
-)
+_DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
 
 @contextmanager
