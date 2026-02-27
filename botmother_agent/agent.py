@@ -15,6 +15,9 @@ from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field
 
 from botmother_agent.prompts import FLOW_GENERATION_PROMPT, SYSTEM_PROMPT
+from botmother_agent.validator import format_errors, validate_flow
+
+MAX_VALIDATION_RETRIES = 2
 
 
 # ── State ────────────────────────────────────────────────────────────────
@@ -24,8 +27,9 @@ class AgentState(BaseModel):
     messages: Annotated[list[BaseMessage], add_messages] = Field(default_factory=list)
     requirements: list[str] = Field(default_factory=list)
     flow_json: str | None = None
-    phase: str = "chat"  # chat | gathering | generating | done
+    phase: str = "chat"  # chat | gathering | generating | validating | done
     turn_count: int = 0
+    validation_retries: int = 0
 
 
 # ── LLM Setup ────────────────────────────────────────────────────────────
@@ -66,7 +70,7 @@ def chat_node(state: AgentState) -> dict[str, Any]:
 
     if flow_json:
         updates["flow_json"] = flow_json
-        updates["phase"] = "done"
+        updates["phase"] = "validating"
 
     # Extract requirements from conversation
     reqs = _extract_requirements(response.content, state.requirements)
@@ -97,22 +101,74 @@ def generate_flow_node(state: AgentState) -> dict[str, Any]:
     updates: dict[str, Any] = {"messages": [clean_response]}
     if flow_json:
         updates["flow_json"] = flow_json
-        updates["phase"] = "done"
+        updates["phase"] = "validating"
     else:
         updates["phase"] = "chat"
 
     return updates
 
 
+def validate_flow_node(state: AgentState) -> dict[str, Any]:
+    """Validate the generated flow JSON. If invalid, ask AI to fix it."""
+    if not state.flow_json:
+        return {"phase": "chat"}
+
+    errors = validate_flow(state.flow_json)
+
+    if not errors:
+        return {"phase": "done"}
+
+    # Max retries reached — accept as-is
+    if state.validation_retries >= MAX_VALIDATION_RETRIES:
+        return {"phase": "done"}
+
+    # Ask AI to fix the errors
+    llm = _get_llm()
+    fix_prompt = (
+        f"The generated flow JSON has the following validation errors:\n"
+        f"{format_errors(errors)}\n\n"
+        f"Here is the current flow JSON:\n```json\n{state.flow_json}\n```\n\n"
+        f"Fix ALL these errors and regenerate the complete flow JSON. "
+        f"Output ONLY the corrected JSON inside ```json ... ``` markers."
+    )
+
+    sys_msg = SystemMessage(content=SYSTEM_PROMPT)
+    messages = [sys_msg] + list(state.messages) + [HumanMessage(content=fix_prompt)]
+    response = llm.invoke(messages)
+
+    fixed_flow = _extract_flow_json(response.content)
+    updates: dict[str, Any] = {"validation_retries": state.validation_retries + 1}
+
+    if fixed_flow:
+        updates["flow_json"] = fixed_flow
+        # Re-validate (will loop back)
+        updates["phase"] = "validating"
+    else:
+        # Couldn't extract fixed JSON — accept what we have
+        updates["phase"] = "done"
+
+    return updates
+
+
 # ── Routing ──────────────────────────────────────────────────────────────
 
-def route_after_chat(state: AgentState) -> Literal["generate_flow", "end"]:
+def route_after_chat(state: AgentState) -> Literal["generate_flow", "validate_flow", "end"]:
     if state.phase == "generating":
         return "generate_flow"
+    if state.phase == "validating":
+        return "validate_flow"
     return "end"
 
 
-def route_after_generate(state: AgentState) -> Literal["end"]:
+def route_after_generate(state: AgentState) -> Literal["validate_flow", "end"]:
+    if state.phase == "validating":
+        return "validate_flow"
+    return "end"
+
+
+def route_after_validate(state: AgentState) -> Literal["validate_flow", "end"]:
+    if state.phase == "validating":
+        return "validate_flow"
     return "end"
 
 
@@ -202,14 +258,21 @@ def create_agent() -> StateGraph:
 
     graph.add_node("chat", chat_node)
     graph.add_node("generate_flow", generate_flow_node)
+    graph.add_node("validate_flow", validate_flow_node)
 
     graph.set_entry_point("chat")
 
     graph.add_conditional_edges("chat", route_after_chat, {
         "generate_flow": "generate_flow",
+        "validate_flow": "validate_flow",
         "end": END,
     })
     graph.add_conditional_edges("generate_flow", route_after_generate, {
+        "validate_flow": "validate_flow",
+        "end": END,
+    })
+    graph.add_conditional_edges("validate_flow", route_after_validate, {
+        "validate_flow": "validate_flow",
         "end": END,
     })
 
