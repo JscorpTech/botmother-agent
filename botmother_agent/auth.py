@@ -23,6 +23,22 @@ def _load_public_key() -> str:
     if _public_key:
         return _public_key
 
+    # First try PUBLIC_KEY env var (base64-encoded or raw PEM from k8s secret)
+    env_key = os.environ.get("PUBLIC_KEY")
+    if env_key:
+        import base64
+        try:
+            decoded = base64.b64decode(env_key).decode("utf-8")
+            if "BEGIN PUBLIC KEY" in decoded:
+                _public_key = decoded
+                return _public_key
+        except Exception:
+            pass
+        if "BEGIN PUBLIC KEY" in env_key:
+            _public_key = env_key
+            return _public_key
+
+    # Fallback to file
     key_path = os.environ.get(
         "JWT_PUBLIC_KEY_PATH",
         str(Path(__file__).resolve().parent.parent / "keys" / "public.pem"),
