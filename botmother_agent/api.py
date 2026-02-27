@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import uuid
+from datetime import datetime as dt
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException
@@ -76,8 +77,8 @@ class SessionInfo(BaseModel):
     turn_count: int
     has_flow: bool
     requirements: list[str]
-    created_at: str
-    updated_at: str
+    created_at: dt
+    updated_at: dt
 
 
 class SessionListItem(BaseModel):
@@ -85,8 +86,8 @@ class SessionListItem(BaseModel):
     phase: str
     turn_count: int
     has_flow: bool
-    created_at: str
-    updated_at: str
+    created_at: dt
+    updated_at: dt
 
 
 class FlowOut(BaseModel):
@@ -95,16 +96,16 @@ class FlowOut(BaseModel):
     description: str | None = None
     flow_json: dict
     session_id: str | None = None
-    created_at: str
-    updated_at: str
+    created_at: dt
+    updated_at: dt
 
 
 class FlowListItem(BaseModel):
     id: int
     name: str | None = None
     description: str | None = None
-    created_at: str
-    updated_at: str
+    created_at: dt
+    updated_at: dt
 
 
 class SaveFlowRequest(BaseModel):
@@ -129,8 +130,8 @@ class UserProfile(BaseModel):
     first_name: str | None = None
     last_name: str | None = None
     role: str
-    created_at: str
-    updated_at: str
+    created_at: dt
+    updated_at: dt
 
 
 class MessageItem(BaseModel):
