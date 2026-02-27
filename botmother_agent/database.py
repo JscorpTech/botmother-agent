@@ -15,6 +15,8 @@ _DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
 @contextmanager
 def get_db():
+    if not _DATABASE_URL:
+        raise RuntimeError("DATABASE_URL environment variable is not set")
     conn = psycopg2.connect(_DATABASE_URL)
     conn.autocommit = False
     try:
