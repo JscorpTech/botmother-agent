@@ -1,0 +1,149 @@
+{
+  "nodes": [
+    {
+      "id": "cmd_start",
+      "type": "CommandTriggerNode",
+      "data": {
+        "command": "/start"
+      },
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "send_welcome",
+      "type": "SendTextMessageNode",
+      "data": {
+        "messageText": "Welcome to our Educational Center! Here are the available courses:",
+        "keyboard": {
+          "active": "inline",
+          "inline": [
+            [
+              {
+                "text": "Course 1",
+                "type": "callback",
+                "value": "course_1"
+              }
+            ],
+            [
+              {
+                "text": "Course 2",
+                "type": "callback",
+                "value": "course_2"
+              }
+            ],
+            [
+              {
+                "text": "Course 3",
+                "type": "callback",
+                "value": "course_3"
+              }
+            ]
+          ]
+        }
+      },
+      "position": {
+        "x": 0,
+        "y": 100
+      }
+    },
+    {
+      "id": "course_1_info",
+      "type": "CallbackQueryTriggerNode",
+      "data": {
+        "filter": "equals",
+        "context": {
+          "value": "course_1"
+        }
+      },
+      "position": {
+        "x": 200,
+        "y": 100
+      }
+    },
+    {
+      "id": "send_course_1_info",
+      "type": "SendTextMessageNode",
+      "data": {
+        "messageText": "Course 1: Introduction to Programming. Duration: 10 weeks. Fee: $200."
+      },
+      "position": {
+        "x": 200,
+        "y": 200
+      }
+    },
+    {
+      "id": "course_2_info",
+      "type": "CallbackQueryTriggerNode",
+      "data": {
+        "filter": "equals",
+        "context": {
+          "value": "course_2"
+        }
+      },
+      "position": {
+        "x": 400,
+        "y": 100
+      }
+    },
+    {
+      "id": "send_course_2_info",
+      "type": "SendTextMessageNode",
+      "data": {
+        "messageText": "Course 2: Advanced Mathematics. Duration: 12 weeks. Fee: $250."
+      },
+      "position": {
+        "x": 400,
+        "y": 200
+      }
+    },
+    {
+      "id": "course_3_info",
+      "type": "CallbackQueryTriggerNode",
+      "data": {
+        "filter": "equals",
+        "context": {
+          "value": "course_3"
+        }
+      },
+      "position": {
+        "x": 600,
+        "y": 100
+      }
+    },
+    {
+      "id": "send_course_3_info",
+      "type": "SendTextMessageNode",
+      "data": {
+        "messageText": "Course 3: English Language. Duration: 8 weeks. Fee: $150."
+      },
+      "position": {
+        "x": 600,
+        "y": 200
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge_start_welcome",
+      "source": "cmd_start",
+      "target": "send_welcome"
+    },
+    {
+      "id": "edge_course_1_info",
+      "source": "course_1_info",
+      "target": "send_course_1_info"
+    },
+    {
+      "id": "edge_course_2_info",
+      "source": "course_2_info",
+      "target": "send_course_2_info"
+    },
+    {
+      "id": "edge_course_3_info",
+      "source": "course_3_info",
+      "target": "send_course_3_info"
+    }
+  ]
+}

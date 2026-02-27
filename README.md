@@ -13,28 +13,61 @@ Set your OpenAI API key:
 export OPENAI_API_KEY=sk-...
 ```
 
-## Usage
+## CLI Usage
 
 ```bash
 python -m botmother_agent.cli
 ```
 
-Or after installing:
+## API Server
+
 ```bash
-botmother-agent
+uvicorn botmother_agent.api:app --reload --port 8000
 ```
 
-The agent will start a conversation. Tell it what kind of Telegram bot you want, and it will:
-1. Ask clarifying questions about your requirements
-2. Generate a valid flow JSON
-3. Save it to the `flows/` directory
+Swagger docs: http://localhost:8000/docs
 
-## Example
+### API Endpoints
 
+#### Session-based (multi-turn conversation)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/sessions` | Create new session |
+| `GET` | `/sessions/{id}` | Get session info |
+| `POST` | `/sessions/{id}/chat` | Send message, get reply |
+| `GET` | `/sessions/{id}/flow` | Get generated flow JSON |
+| `POST` | `/sessions/{id}/flow/save` | Save flow to file |
+| `GET` | `/sessions/{id}/history` | Get chat history |
+| `POST` | `/sessions/{id}/reset` | Reset conversation |
+| `DELETE` | `/sessions/{id}` | Delete session |
+
+#### One-shot (single request)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/generate` | Describe bot → get flow JSON |
+| `GET` | `/health` | Health check |
+
+### Examples
+
+**Create session and chat:**
+```bash
+# 1. Create session
+curl -X POST http://localhost:8000/sessions
+
+# 2. Chat (use session_id from step 1)
+curl -X POST http://localhost:8000/sessions/{session_id}/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Men /start komandasi bilan ishlaydigan oddiy bot yaratmoqchiman"}'
+
+# 3. Get flow
+curl http://localhost:8000/sessions/{session_id}/flow
 ```
-You: Men pizza buyurtma berish botini yaratmoqchiman
-Agent: Ajoyib! Pizza buyurtma bot uchun bir nechta savol:
-1. Qanday kategoriyalar bo'ladi? (masalan: pizza, ichimliklar, desertlar)
-2. To'lov qanday bo'ladi? (click, payme, naqd)
-...
+
+**One-shot generation:**
+```bash
+curl -X POST http://localhost:8000/generate \
+  -H "Content-Type: application/json" \
+  -d '{"description": "/start komandasi bilan salomlashuvchi va ismini so'\''raydigan bot"}'
 ```
