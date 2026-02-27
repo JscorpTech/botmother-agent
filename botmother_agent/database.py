@@ -1,32 +1,25 @@
-"""SQLite database layer for user data, sessions, and generated flows."""
+"""PostgreSQL database layer for user data, sessions, and generated flows."""
 
 from __future__ import annotations
 
 import json
 import os
-import sqlite3
 from contextlib import contextmanager
-from datetime import datetime
-from pathlib import Path
 from typing import Any
 
-_DB_PATH = os.environ.get(
-    "DATABASE_PATH",
-    str(Path(__file__).resolve().parent.parent / "data" / "agent.db"),
+import psycopg2
+import psycopg2.extras
+
+_DATABASE_URL = os.environ.get(
+    "DATABASE_URL",
+    "postgresql://postgres:***REDACTED***@database-1.c6ti8kiike3e.us-east-1.rds.amazonaws.com:5432/agent",
 )
-
-
-def _ensure_dir() -> None:
-    Path(_DB_PATH).parent.mkdir(parents=True, exist_ok=True)
 
 
 @contextmanager
 def get_db():
-    _ensure_dir()
-    conn = sqlite3.connect(_DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
+    conn = psycopg2.connect(_DATABASE_URL)
+    conn.autocommit = False
     try:
         yield conn
         conn.commit()
@@ -37,12 +30,27 @@ def get_db():
         conn.close()
 
 
+def _row_to_dict(cursor) -> dict | None:
+    row = cursor.fetchone()
+    if not row:
+        return None
+    cols = [desc[0] for desc in cursor.description]
+    return dict(zip(cols, row))
+
+
+def _rows_to_list(cursor) -> list[dict]:
+    rows = cursor.fetchall()
+    cols = [desc[0] for desc in cursor.description]
+    return [dict(zip(cols, row)) for row in rows]
+
+
 # ── Schema ───────────────────────────────────────────────────────────────
 
 def init_db() -> None:
     """Create tables if they don't exist."""
-    with get_db() as db:
-        db.executescript("""
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id TEXT PRIMARY KEY,
                 email TEXT,
@@ -50,39 +58,40 @@ def init_db() -> None:
                 first_name TEXT,
                 last_name TEXT,
                 role TEXT DEFAULT 'user',
-                created_at TEXT DEFAULT (datetime('now')),
-                updated_at TEXT DEFAULT (datetime('now'))
-            );
-
+                created_at TIMESTAMP DEFAULT NOW(),
+                updated_at TIMESTAMP DEFAULT NOW()
+            )
+        """)
+        cur.execute("""
             CREATE TABLE IF NOT EXISTS sessions (
                 id TEXT PRIMARY KEY,
-                user_id TEXT NOT NULL,
+                user_id TEXT NOT NULL REFERENCES users(id),
                 phase TEXT DEFAULT 'chat',
                 turn_count INTEGER DEFAULT 0,
                 requirements TEXT DEFAULT '[]',
                 flow_json TEXT,
                 messages TEXT DEFAULT '[]',
-                created_at TEXT DEFAULT (datetime('now')),
-                updated_at TEXT DEFAULT (datetime('now')),
-                FOREIGN KEY (user_id) REFERENCES users(id)
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
-
+                created_at TIMESTAMP DEFAULT NOW(),
+                updated_at TIMESTAMP DEFAULT NOW()
+            )
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)
+        """)
+        cur.execute("""
             CREATE TABLE IF NOT EXISTS flows (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT NOT NULL,
-                session_id TEXT,
+                id SERIAL PRIMARY KEY,
+                user_id TEXT NOT NULL REFERENCES users(id),
+                session_id TEXT REFERENCES sessions(id),
                 name TEXT,
                 description TEXT,
                 flow_json TEXT NOT NULL,
-                created_at TEXT DEFAULT (datetime('now')),
-                updated_at TEXT DEFAULT (datetime('now')),
-                FOREIGN KEY (user_id) REFERENCES users(id),
-                FOREIGN KEY (session_id) REFERENCES sessions(id)
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_flows_user ON flows(user_id);
+                created_at TIMESTAMP DEFAULT NOW(),
+                updated_at TIMESTAMP DEFAULT NOW()
+            )
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_flows_user ON flows(user_id)
         """)
 
 
@@ -96,49 +105,53 @@ def upsert_user(
     last_name: str | None = None,
     role: str = "user",
 ) -> dict:
-    with get_db() as db:
-        db.execute(
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(
             """INSERT INTO users (id, email, username, first_name, last_name, role)
-               VALUES (?, ?, ?, ?, ?, ?)
+               VALUES (%s, %s, %s, %s, %s, %s)
                ON CONFLICT(id) DO UPDATE SET
-                 email = COALESCE(excluded.email, email),
-                 username = COALESCE(excluded.username, username),
-                 first_name = COALESCE(excluded.first_name, first_name),
-                 last_name = COALESCE(excluded.last_name, last_name),
-                 role = excluded.role,
-                 updated_at = datetime('now')
+                 email = COALESCE(EXCLUDED.email, users.email),
+                 username = COALESCE(EXCLUDED.username, users.username),
+                 first_name = COALESCE(EXCLUDED.first_name, users.first_name),
+                 last_name = COALESCE(EXCLUDED.last_name, users.last_name),
+                 role = EXCLUDED.role,
+                 updated_at = NOW()
             """,
             (str(user_id), email, username, first_name, last_name, role),
         )
-        row = db.execute("SELECT * FROM users WHERE id = ?", (str(user_id),)).fetchone()
-        return dict(row)
+        cur.execute("SELECT * FROM users WHERE id = %s", (str(user_id),))
+        return _row_to_dict(cur)
 
 
 def get_user(user_id: str) -> dict | None:
-    with get_db() as db:
-        row = db.execute("SELECT * FROM users WHERE id = ?", (str(user_id),)).fetchone()
-        return dict(row) if row else None
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM users WHERE id = %s", (str(user_id),))
+        return _row_to_dict(cur)
 
 
 # ── Sessions ─────────────────────────────────────────────────────────────
 
 def create_session(session_id: str, user_id: str) -> dict:
-    with get_db() as db:
-        db.execute(
-            "INSERT INTO sessions (id, user_id) VALUES (?, ?)",
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO sessions (id, user_id) VALUES (%s, %s)",
             (session_id, str(user_id)),
         )
-        row = db.execute("SELECT * FROM sessions WHERE id = ?", (session_id,)).fetchone()
-        return dict(row)
+        cur.execute("SELECT * FROM sessions WHERE id = %s", (session_id,))
+        return _row_to_dict(cur)
 
 
 def get_session(session_id: str, user_id: str) -> dict | None:
-    with get_db() as db:
-        row = db.execute(
-            "SELECT * FROM sessions WHERE id = ? AND user_id = ?",
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM sessions WHERE id = %s AND user_id = %s",
             (session_id, str(user_id)),
-        ).fetchone()
-        return dict(row) if row else None
+        )
+        return _row_to_dict(cur)
 
 
 def update_session(
@@ -153,43 +166,46 @@ def update_session(
     parts = []
     vals: list[Any] = []
     if phase is not None:
-        parts.append("phase = ?")
+        parts.append("phase = %s")
         vals.append(phase)
     if turn_count is not None:
-        parts.append("turn_count = ?")
+        parts.append("turn_count = %s")
         vals.append(turn_count)
     if requirements is not None:
-        parts.append("requirements = ?")
+        parts.append("requirements = %s")
         vals.append(json.dumps(requirements, ensure_ascii=False))
     if flow_json is not None:
-        parts.append("flow_json = ?")
+        parts.append("flow_json = %s")
         vals.append(flow_json)
     if messages_json is not None:
-        parts.append("messages = ?")
+        parts.append("messages = %s")
         vals.append(messages_json)
     if not parts:
         return
-    parts.append("updated_at = datetime('now')")
+    parts.append("updated_at = NOW()")
     vals.append(session_id)
-    sql = f"UPDATE sessions SET {', '.join(parts)} WHERE id = ?"
-    with get_db() as db:
-        db.execute(sql, vals)
+    sql = f"UPDATE sessions SET {', '.join(parts)} WHERE id = %s"
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(sql, vals)
 
 
 def list_sessions(user_id: str) -> list[dict]:
-    with get_db() as db:
-        rows = db.execute(
-            "SELECT id, phase, turn_count, flow_json IS NOT NULL as has_flow, created_at, updated_at "
-            "FROM sessions WHERE user_id = ? ORDER BY updated_at DESC",
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT id, phase, turn_count, (flow_json IS NOT NULL) as has_flow, created_at, updated_at "
+            "FROM sessions WHERE user_id = %s ORDER BY updated_at DESC",
             (str(user_id),),
-        ).fetchall()
-        return [dict(r) for r in rows]
+        )
+        return _rows_to_list(cur)
 
 
 def delete_session(session_id: str, user_id: str) -> bool:
-    with get_db() as db:
-        cur = db.execute(
-            "DELETE FROM sessions WHERE id = ? AND user_id = ?",
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "DELETE FROM sessions WHERE id = %s AND user_id = %s",
             (session_id, str(user_id)),
         )
         return cur.rowcount > 0
@@ -204,38 +220,42 @@ def save_flow_record(
     description: str | None = None,
     session_id: str | None = None,
 ) -> dict:
-    with get_db() as db:
-        cur = db.execute(
-            "INSERT INTO flows (user_id, session_id, name, description, flow_json) VALUES (?, ?, ?, ?, ?)",
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO flows (user_id, session_id, name, description, flow_json) "
+            "VALUES (%s, %s, %s, %s, %s) RETURNING *",
             (str(user_id), session_id, name, description, flow_json),
         )
-        row = db.execute("SELECT * FROM flows WHERE id = ?", (cur.lastrowid,)).fetchone()
-        return dict(row)
+        return _row_to_dict(cur)
 
 
 def list_flows(user_id: str) -> list[dict]:
-    with get_db() as db:
-        rows = db.execute(
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(
             "SELECT id, name, description, created_at, updated_at "
-            "FROM flows WHERE user_id = ? ORDER BY created_at DESC",
+            "FROM flows WHERE user_id = %s ORDER BY created_at DESC",
             (str(user_id),),
-        ).fetchall()
-        return [dict(r) for r in rows]
+        )
+        return _rows_to_list(cur)
 
 
 def get_flow(flow_id: int, user_id: str) -> dict | None:
-    with get_db() as db:
-        row = db.execute(
-            "SELECT * FROM flows WHERE id = ? AND user_id = ?",
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM flows WHERE id = %s AND user_id = %s",
             (flow_id, str(user_id)),
-        ).fetchone()
-        return dict(row) if row else None
+        )
+        return _row_to_dict(cur)
 
 
 def delete_flow(flow_id: int, user_id: str) -> bool:
-    with get_db() as db:
-        cur = db.execute(
-            "DELETE FROM flows WHERE id = ? AND user_id = ?",
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "DELETE FROM flows WHERE id = %s AND user_id = %s",
             (flow_id, str(user_id)),
         )
         return cur.rowcount > 0
