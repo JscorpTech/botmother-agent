@@ -52,8 +52,12 @@ def chat_node(state: AgentState) -> dict[str, Any]:
     new_phase = _detect_phase(state, response.content)
     flow_json = _extract_flow_json(response.content)
 
+    # Strip flow JSON from the visible message
+    clean_content = _strip_flow_json(response.content) if flow_json else response.content
+    clean_response = AIMessage(content=clean_content)
+
     updates: dict[str, Any] = {
-        "messages": [response],
+        "messages": [clean_response],
         "turn_count": state.turn_count + 1,
     }
 
@@ -86,7 +90,11 @@ def generate_flow_node(state: AgentState) -> dict[str, Any]:
 
     flow_json = _extract_flow_json(response.content)
 
-    updates: dict[str, Any] = {"messages": [response]}
+    # Strip flow JSON from the visible message
+    clean_content = _strip_flow_json(response.content) if flow_json else response.content
+    clean_response = AIMessage(content=clean_content)
+
+    updates: dict[str, Any] = {"messages": [clean_response]}
     if flow_json:
         updates["flow_json"] = flow_json
         updates["phase"] = "done"
@@ -177,6 +185,15 @@ def _extract_flow_json(text: str) -> str | None:
         except json.JSONDecodeError:
             continue
     return None
+
+
+def _strip_flow_json(text: str) -> str:
+    """Remove flow JSON code blocks from message text so the user never sees raw JSON."""
+    pattern = r"```json\s*[\s\S]*?\s*```"
+    cleaned = re.sub(pattern, "", text).strip()
+    # Clean up leftover empty lines
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned if cleaned else "Flow tayyor! 🎉"
 
 
 # ── Graph Builder ────────────────────────────────────────────────────────
