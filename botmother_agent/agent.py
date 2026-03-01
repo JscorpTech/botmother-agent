@@ -37,7 +37,7 @@ class AgentState(BaseModel):
 def _get_llm() -> ChatOpenAI:
     model = os.environ.get("BOTMOTHER_MODEL", "gpt-4o")
     base_url = os.environ.get("OPENAI_API_BASE")
-    proxy_url = os.environ.get("OPENAI_PROXY")
+    proxy_url = os.environ.get("SOCKS_PROXY")
     kwargs: dict[str, Any] = {"model": model, "temperature": 0.3}
     if base_url:
         kwargs["base_url"] = base_url
