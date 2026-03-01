@@ -37,9 +37,14 @@ class AgentState(BaseModel):
 def _get_llm() -> ChatOpenAI:
     model = os.environ.get("BOTMOTHER_MODEL", "gpt-4o")
     base_url = os.environ.get("OPENAI_API_BASE")
+    proxy_url = os.environ.get("OPENAI_PROXY")
     kwargs: dict[str, Any] = {"model": model, "temperature": 0.3}
     if base_url:
         kwargs["base_url"] = base_url
+    if proxy_url:
+        import httpx
+        kwargs["http_client"] = httpx.Client(proxy=proxy_url)
+        kwargs["http_async_client"] = httpx.AsyncClient(proxy=proxy_url)
     return ChatOpenAI(**kwargs)
 
 
