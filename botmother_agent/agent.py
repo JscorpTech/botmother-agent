@@ -28,6 +28,7 @@ class AgentState(BaseModel):
     requirements: list[str] = Field(default_factory=list)
     flow_json: str | None = None
     existing_flow: str | None = None  # current project flow JSON passed from constructor
+    available_plugins: str | None = None  # JSON list of plugins from plugin API
     phase: str = "chat"  # chat | gathering | generating | validating | done
     turn_count: int = 0
     validation_retries: int = 0
@@ -51,20 +52,37 @@ def _get_llm() -> ChatOpenAI:
 
 # ── Node functions ───────────────────────────────────────────────────────
 
+def _plugins_context(state: AgentState) -> str:
+    """Build plugins section for system prompt."""
+    if not state.available_plugins:
+        return ""
+    return (
+        "\n\n## AVAILABLE PLUGINS (SubFlowNode slugs)\n"
+        "Use ONLY these slugs when creating SubFlowNode. Never invent slugs.\n"
+        + state.available_plugins
+    )
+
+
+def _existing_flow_context(state: AgentState) -> str:
+    """Build existing flow section for system prompt."""
+    if not state.existing_flow:
+        return ""
+    return (
+        "\n\n## EXISTING PROJECT FLOW\n"
+        "The user already has the following flow. "
+        "Incorporate and extend it — do NOT remove existing nodes/edges unless explicitly asked. "
+        "**CRITICAL: Copy all SubFlowNode nodes VERBATIM — do not change their slug, params, or any field.**\n"
+        "```json\n" + state.existing_flow + "\n```"
+    )
+
+
 def chat_node(state: AgentState) -> dict[str, Any]:
     """Main conversation node — talks with user, decides next step."""
     llm = _get_llm()
 
     system_content = SYSTEM_PROMPT + "\n\n" + _phase_instructions(state)
-    if state.existing_flow:
-        system_content += (
-            "\n\n## EXISTING PROJECT FLOW\n"
-            "The user already has the following flow in their project. "
-            "When generating a new or updated flow, you MUST incorporate and extend this existing flow — "
-            "do NOT discard existing nodes/edges unless explicitly asked. "
-            "Merge new functionality with the existing structure:\n"
-            "```json\n" + state.existing_flow + "\n```"
-        )
+    system_content += _plugins_context(state)
+    system_content += _existing_flow_context(state)
 
     sys_msg = SystemMessage(content=system_content)
     messages = [sys_msg] + list(state.messages)
@@ -104,12 +122,8 @@ def generate_flow_node(state: AgentState) -> dict[str, Any]:
     req_text = "\n".join(f"- {r}" for r in state.requirements) if state.requirements else "See conversation above."
 
     system_content = SYSTEM_PROMPT
-    if state.existing_flow:
-        system_content += (
-            "\n\n## EXISTING PROJECT FLOW\n"
-            "Incorporate and extend this existing flow — do NOT remove existing nodes/edges:\n"
-            "```json\n" + state.existing_flow + "\n```"
-        )
+    system_content += _plugins_context(state)
+    system_content += _existing_flow_context(state)
 
     sys_msg = SystemMessage(content=system_content)
     gen_msg = HumanMessage(content=FLOW_GENERATION_PROMPT.format(requirements=req_text))
@@ -138,8 +152,8 @@ def validate_flow_node(state: AgentState) -> dict[str, Any]:
     if not state.flow_json:
         return {"phase": "chat"}
 
-    # Auto-fix known issues (e.g. CommandTriggerNode missing global:true)
-    fixed = fix_flow_json(state.flow_json)
+    # Auto-fix known issues (e.g. CommandTriggerNode missing global:true, SubFlow preservation)
+    fixed = fix_flow_json(state.flow_json, state.existing_flow)
     errors = validate_flow(fixed)
 
     if not errors:

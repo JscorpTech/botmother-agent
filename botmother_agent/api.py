@@ -192,6 +192,51 @@ def _fetch_project_flow(project_id: str, token: str) -> str | None:
     return None
 
 
+# Cache plugins list for 5 minutes to avoid hammering the plugin API
+_plugins_cache: dict | None = None
+_plugins_cache_time: float = 0.0
+
+
+def _fetch_plugins() -> str | None:
+    """Fetch available plugins from the plugin engine API."""
+    import time
+    global _plugins_cache, _plugins_cache_time
+
+    # Return cached result if fresh (5 min TTL)
+    if _plugins_cache is not None and (time.time() - _plugins_cache_time) < 300:
+        return _plugins_cache
+
+    plugin_api = os.environ.get("PLUGIN_API_URL", "").rstrip("/")
+    if not plugin_api:
+        return None
+    try:
+        resp = httpx.get(f"{plugin_api}/subflows", params={"active": "true", "per_page": 100}, timeout=5)
+        if resp.status_code == 200:
+            data = resp.json()
+            plugins = data.get("data", data) if isinstance(data, dict) else data
+            # Build compact summary for prompt
+            lines = []
+            for p in plugins:
+                slug = p.get("slug", "")
+                name = p.get("name", "")
+                desc = p.get("description", "")
+                outputs = [o.get("name") for o in p.get("outputs", [])]
+                params = list((p.get("params_schema") or {}).get("properties", {}).keys())
+                line = f"- slug: `{slug}` | name: {name} | {desc}"
+                if params:
+                    line += f" | params: {', '.join(params)}"
+                if outputs:
+                    line += f" | outputs: {', '.join(outputs)}"
+                lines.append(line)
+            result = "\n".join(lines) if lines else None
+            _plugins_cache = result
+            _plugins_cache_time = time.time()
+            return result
+    except Exception:
+        pass
+    return None
+
+
 def _get_session_or_404(session_id: str, user_id: str) -> dict:
     session = db.get_session(session_id, str(user_id))
     if not session:
@@ -324,12 +369,16 @@ def chat(session_id: str, req: ChatRequest, request: Request, user: TokenPayload
     token = (request.headers.get("Authorization") or "").removeprefix("Bearer ").strip()
     existing_flow_str = _fetch_project_flow(s.get("project_id"), token)
 
+    # Fetch available plugins (cached, 5 min TTL)
+    plugins_str = _fetch_plugins()
+
     agent = create_agent()
     state = {
         "messages": messages,
         "requirements": reqs,
         "flow_json": s.get("flow_json"),
         "existing_flow": existing_flow_str,
+        "available_plugins": plugins_str,
         "phase": s["phase"],
         "turn_count": s["turn_count"],
     }

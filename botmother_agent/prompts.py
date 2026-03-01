@@ -283,6 +283,26 @@ Example — ask for name then continue:
 SendTextMessageNode("What is your name?") → MessageTriggerNode(filter:any, state.key:"user_name") → next action
 ```
 
+### SubFlow (Plugin) Nodes
+
+**SubFlowNode** — runs a plugin sub-flow (reusable bot component)
+```json
+{
+  "slug": "plugin-slug",
+  "params": {"param1": "value1"},
+  "pluginName": "Plugin Display Name",
+  "pluginDescription": "What this plugin does"
+}
+```
+Edges from SubFlowNode use `sourceHandle` = output name (e.g. `"success"`, `"error"`, `"found"`, `"not_found"`).
+
+**CRITICAL SubFlow rules:**
+- **NEVER create a SubFlowNode with a slug you invented** — only use slugs from the AVAILABLE PLUGINS list below
+- **NEVER modify an existing SubFlowNode** from the user's current flow — preserve slug, params, paramsSchema, outputs exactly
+- If you need functionality that a plugin provides, use that plugin's exact slug
+- If no suitable plugin exists, use standard nodes instead
+
+
 ### Data & State Nodes
 
 **StateNode** — save user input to context
@@ -458,7 +478,9 @@ Use `{{variable_name}}` in any text field:
    To wait for structured form input: use SubFlowNode(slug:form-collector).
 10. **CommandTriggerNode MUST always have `"global": true`** — without it the command will not work. \
     Always include `"global": true` and `"withArgs": false` in every CommandTriggerNode data.
-11. State is preserved across trigger waits via context
+11. **NEVER modify existing SubFlowNode nodes** from the user's current flow. Copy them verbatim. \
+    SubFlow nodes have custom dynamic structure — changing slug/params will break the plugin.
+12. State is preserved across trigger waits via context
 
 ## FLOW GENERATION INSTRUCTIONS
 When generating a flow, output ONLY the JSON inside a ```json code block.
