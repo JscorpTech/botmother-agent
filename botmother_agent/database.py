@@ -78,6 +78,10 @@ def init_db() -> None:
         cur.execute("""
             CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)
         """)
+        # Migration: add project_id column if it doesn't exist (for existing deployments)
+        cur.execute("""
+            ALTER TABLE sessions ADD COLUMN IF NOT EXISTS project_id TEXT
+        """)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS flows (
                 id SERIAL PRIMARY KEY,
