@@ -15,7 +15,7 @@ from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field
 
 from botmother_agent.prompts import FLOW_GENERATION_PROMPT, SYSTEM_PROMPT
-from botmother_agent.validator import format_errors, validate_flow
+from botmother_agent.validator import format_errors, validate_flow, fix_flow_json
 
 MAX_VALIDATION_RETRIES = 2
 
@@ -138,10 +138,12 @@ def validate_flow_node(state: AgentState) -> dict[str, Any]:
     if not state.flow_json:
         return {"phase": "chat"}
 
-    errors = validate_flow(state.flow_json)
+    # Auto-fix known issues (e.g. CommandTriggerNode missing global:true)
+    fixed = fix_flow_json(state.flow_json)
+    errors = validate_flow(fixed)
 
     if not errors:
-        return {"phase": "done"}
+        return {"phase": "done", "flow_json": fixed}
 
     # Max retries reached — accept as-is
     if state.validation_retries >= MAX_VALIDATION_RETRIES:

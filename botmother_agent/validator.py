@@ -195,6 +195,27 @@ def validate_flow(flow_json: str) -> list[str]:
     return errors
 
 
+def fix_flow(flow: dict) -> dict:
+    """Auto-fix common issues in a flow dict (mutates and returns it)."""
+    for node in flow.get("nodes", []):
+        if node.get("type") == "CommandTriggerNode":
+            data = node.setdefault("data", {})
+            # Always ensure global=true and withArgs has a default
+            data.setdefault("global", True)
+            data["global"] = True  # enforce — never allow global=false
+            data.setdefault("withArgs", False)
+    return flow
+
+
+def fix_flow_json(flow_json: str) -> str:
+    """Parse, auto-fix, and re-serialize flow JSON."""
+    try:
+        flow = json.loads(flow_json)
+        return json.dumps(fix_flow(flow))
+    except Exception:
+        return flow_json
+
+
 def format_errors(errors: list[str]) -> str:
     """Format validation errors as a readable string for the AI."""
     return "\n".join(f"- {e}" for e in errors)

@@ -44,8 +44,10 @@ A flow consists of `nodes` and `edges`:
 
 **CommandTriggerNode** — matches /command
 ```json
-{"command": "/start"}
+{"command": "/start", "global": true, "withArgs": false}
 ```
+- `global`: **always set to `true`** — required for the command to work globally
+- `withArgs`: set to `true` only if the command accepts arguments (e.g. `/start arg`)
 
 **MessageTriggerNode** — matches message by type and filter
 ```json
@@ -445,7 +447,9 @@ Use `{{variable_name}}` in any text field:
 9. **NEVER use PauseNode — it does not exist in the engine.** \
    To wait for user free-text input: use MessageTriggerNode(filter:any). \
    To wait for structured form input: use SubFlowNode(slug:form-collector).
-8. State is preserved across trigger waits via context
+10. **CommandTriggerNode MUST always have `"global": true`** — without it the command will not work. \
+    Always include `"global": true` and `"withArgs": false` in every CommandTriggerNode data.
+11. State is preserved across trigger waits via context
 
 ## FLOW GENERATION INSTRUCTIONS
 When generating a flow, output ONLY the JSON inside a ```json code block.
