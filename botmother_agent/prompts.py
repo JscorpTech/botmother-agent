@@ -93,17 +93,6 @@ A flow consists of `nodes` and `edges`:
 ⚠️ **IMPORTANT**: For `EditOrSendMessageNode` menus, do NOT use `CallbackQueryTriggerNode` or any callback trigger.
 Button clicks are handled directly via button edges: `sourceHandle: "target-handler-{nodeId}-{buttonText}"`.
 
-**ReplyButtonTriggerNode** — matches reply keyboard button text
-```json
-{
-  "selectedButtons": [
-    {"type": "reply", "text": "Button Text"},
-    {"type": "request_contact", "text": "Share Contact"},
-    {"type": "request_location", "text": "Share Location"}
-  ]
-}
-```
-
 **CronTriggerNode** — scheduled execution
 ```json
 {
@@ -463,7 +452,7 @@ Use `{{variable_name}}` in any text field:
    use EditOrSendMessageNode for menu screens so the message is edited (not duplicated) on navigation
 7. EditOrSendMessageNode button edges: sourceHandle format is `target-handler-{nodeId}-{buttonText}` \
    (use button TEXT, not value). These edges connect directly to the next screen node — no separate trigger needed.
-8. Reply keyboard buttons need ReplyButtonTriggerNode to handle selections
+8. Reply keyboard buttons: use `MessageTriggerNode` with `filter: "equals"` and `context.value` matching the button text to handle reply button clicks
 9. **NEVER use PauseNode — it does not exist in the engine.** \
    To wait for user free-text input: use MessageTriggerNode(filter:any). \
    To wait for structured form input: use SubFlowNode(slug:form-collector).

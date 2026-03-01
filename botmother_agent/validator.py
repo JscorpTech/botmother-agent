@@ -11,7 +11,6 @@ TRIGGER_TYPES = {
     "CommandTriggerNode",
     "MessageTriggerNode",
     "CallbackQueryTriggerNode",
-    "ReplyButtonTriggerNode",
     "CronTriggerNode",
 }
 
@@ -200,11 +199,12 @@ def fix_flow(flow: dict) -> dict:
     default_marker_end = {"type": "arrow", "color": "#495057", "width": 30, "height": 30}
 
     # Remove nodes that don't exist in the engine
+    REMOVED_NODE_TYPES = {"CallbackButtonTriggerNode", "ReplyButtonTriggerNode"}
     removed_node_ids: set[str] = set()
     kept_nodes = []
     for node in flow.get("nodes", []):
         ntype = node.get("type")
-        if ntype == "CallbackButtonTriggerNode":
+        if ntype in REMOVED_NODE_TYPES:
             removed_node_ids.add(node.get("id", ""))
             continue  # drop it
         if ntype == "CommandTriggerNode":
