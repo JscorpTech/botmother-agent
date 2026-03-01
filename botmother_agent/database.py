@@ -69,7 +69,7 @@ def init_db() -> None:
                 turn_count INTEGER DEFAULT 0,
                 requirements TEXT DEFAULT '[]',
                 flow_json TEXT,
-                existing_flow TEXT,
+                project_id TEXT,
                 messages TEXT DEFAULT '[]',
                 created_at TIMESTAMP DEFAULT NOW(),
                 updated_at TIMESTAMP DEFAULT NOW()
@@ -133,12 +133,12 @@ def get_user(user_id: str) -> dict | None:
 
 # ── Sessions ─────────────────────────────────────────────────────────────
 
-def create_session(session_id: str, user_id: str, existing_flow: str | None = None) -> dict:
+def create_session(session_id: str, user_id: str, project_id: str | None = None) -> dict:
     with get_db() as conn:
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO sessions (id, user_id, existing_flow) VALUES (%s, %s, %s)",
-            (session_id, str(user_id), existing_flow),
+            "INSERT INTO sessions (id, user_id, project_id) VALUES (%s, %s, %s)",
+            (session_id, str(user_id), project_id),
         )
         cur.execute("SELECT * FROM sessions WHERE id = %s", (session_id,))
         return _row_to_dict(cur)

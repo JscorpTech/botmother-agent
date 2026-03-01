@@ -12,7 +12,8 @@ import uuid
 from datetime import datetime as dt
 from typing import Any
 
-from fastapi import Depends, FastAPI, HTTPException
+import httpx
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from langchain_core.messages import AIMessage, HumanMessage
 from pydantic import BaseModel, Field
@@ -58,7 +59,7 @@ _msg_cache: dict[str, list] = {}
 # ── Request / Response Models ────────────────────────────────────────────
 
 class CreateSessionRequest(BaseModel):
-    existing_flow: dict | None = None
+    project_id: str | None = None
 
 
 class CreateSessionResponse(BaseModel):
@@ -165,6 +166,27 @@ def _uid() -> str:
     return uuid.uuid4().hex[:12]
 
 
+def _fetch_project_flow(project_id: str, token: str) -> str | None:
+    """Fetch current flow from the main Botmother backend API."""
+    main_api = os.environ.get("MAIN_API_URL", "").rstrip("/")
+    if not main_api or not project_id:
+        return None
+    try:
+        resp = httpx.get(
+            f"{main_api}/api/project/{project_id}/",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=5,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            flow = data.get("flow") or data.get("data", {}).get("flow")
+            if flow:
+                return json.dumps(flow, ensure_ascii=False)
+    except Exception:
+        pass
+    return None
+
+
 def _get_session_or_404(session_id: str, user_id: str) -> dict:
     session = db.get_session(session_id, str(user_id))
     if not session:
@@ -246,11 +268,10 @@ def list_sessions(user: TokenPayload = Depends(get_current_user)):
 
 @app.post("/sessions", response_model=CreateSessionResponse, tags=["sessions"])
 def create_session(req: CreateSessionRequest = CreateSessionRequest(), user: TokenPayload = Depends(get_current_user)):
-    """Create a new conversation session. Optionally pass existing_flow to give agent context."""
+    """Create a new conversation session. Pass project_id so agent fetches the live flow."""
     _ensure_user(user)
     session_id = _uid()
-    existing_flow_str = json.dumps(req.existing_flow, ensure_ascii=False) if req.existing_flow else None
-    db.create_session(session_id, str(user.user_id), existing_flow=existing_flow_str)
+    db.create_session(session_id, str(user.user_id), project_id=req.project_id)
     return CreateSessionResponse(
         session_id=session_id,
         message="Session created",
@@ -284,7 +305,7 @@ def delete_session(session_id: str, user: TokenPayload = Depends(get_current_use
 
 
 @app.post("/sessions/{session_id}/chat", response_model=ChatResponse, tags=["sessions"])
-def chat(session_id: str, req: ChatRequest, user: TokenPayload = Depends(get_current_user)):
+def chat(session_id: str, req: ChatRequest, request: Request, user: TokenPayload = Depends(get_current_user)):
     """Send a message and get agent response."""
     _ensure_user(user)
     s = _get_session_or_404(session_id, str(user.user_id))
@@ -293,12 +314,17 @@ def chat(session_id: str, req: ChatRequest, user: TokenPayload = Depends(get_cur
     messages.append(HumanMessage(content=req.message))
 
     reqs = json.loads(s.get("requirements") or "[]")
+
+    # Fetch latest project flow from main backend on every message
+    token = (request.headers.get("Authorization") or "").removeprefix("Bearer ").strip()
+    existing_flow_str = _fetch_project_flow(s.get("project_id"), token)
+
     agent = create_agent()
     state = {
         "messages": messages,
         "requirements": reqs,
         "flow_json": s.get("flow_json"),
-        "existing_flow": s.get("existing_flow"),
+        "existing_flow": existing_flow_str,
         "phase": s["phase"],
         "turn_count": s["turn_count"],
     }
