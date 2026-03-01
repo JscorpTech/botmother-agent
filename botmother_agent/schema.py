@@ -61,7 +61,6 @@ class NodeType(str, Enum):
     RANDOM = "RandomNode"
     FOR_LOOP = "ForLoopNode"
     FOR_LOOP_CONTINUE = "ForLoopContinueNode"
-    PAUSE = "PauseNode"
 
     # Data
     VARIABLE = "VariableNode"

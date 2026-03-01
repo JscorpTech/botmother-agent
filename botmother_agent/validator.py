@@ -28,7 +28,7 @@ ALL_NODE_TYPES = TRIGGER_TYPES | {
     # Interactive
     "ChatActionNode", "CallbackQueryAnswerNode", "CheckMembershipNode",
     # Flow control
-    "IfConditionNode", "RandomNode", "ForLoopNode", "ForLoopContinueNode", "PauseNode",
+    "IfConditionNode", "RandomNode", "ForLoopNode", "ForLoopContinueNode",
     # Data
     "VariableNode", "StateNode", "CollectionNode",
     "LoadCollectionItemNode", "LoadCollectionListNode",

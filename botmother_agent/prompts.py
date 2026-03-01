@@ -261,9 +261,17 @@ Edges: sourceHandle "loop-body" (loop iteration), "no-items" (empty).
 **ForLoopContinueNode** — advance to next iteration
 Edges: sourceHandle "loop-continue" (more items), "loop-done" (finished).
 
-**PauseNode** — wait for next user input
-```json
-{}
+### Waiting for User Input
+
+**IMPORTANT — there is NO PauseNode.** To wait for a free-text reply from the user, simply \
+add a `MessageTriggerNode` with `"filter": "any"` as the NEXT node in the flow. The engine \
+automatically pauses execution after sending a message with an inline keyboard — \
+no explicit pause needed. For structured multi-field forms use `SubFlowNode` with \
+slug `form-collector`.
+
+Example — ask for name then continue:
+```
+SendTextMessageNode("What is your name?") → MessageTriggerNode(filter:any, state.key:"user_name") → next action
 ```
 
 ### Data & State Nodes
@@ -434,6 +442,9 @@ Use `{{variable_name}}` in any text field:
 7. EditOrSendMessageNode button edges: sourceHandle format is `target-handler-{nodeId}-{buttonText}` \
    (use button TEXT, not value). These edges connect directly to the next screen node — no separate trigger needed.
 8. Reply keyboard buttons need ReplyButtonTriggerNode to handle selections
+9. **NEVER use PauseNode — it does not exist in the engine.** \
+   To wait for user free-text input: use MessageTriggerNode(filter:any). \
+   To wait for structured form input: use SubFlowNode(slug:form-collector).
 8. State is preserved across trigger waits via context
 
 ## FLOW GENERATION INSTRUCTIONS
