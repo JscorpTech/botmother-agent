@@ -285,21 +285,33 @@ SendTextMessageNode("What is your name?") → MessageTriggerNode(filter:any, sta
 
 ### SubFlow (Plugin) Nodes
 
-**SubFlowNode** — runs a plugin sub-flow (reusable bot component)
+**SubFlowNode** — runs a plugin sub-flow (reusable bot component).
+
+**HOW TO USE SubFlowNode:**
+1. Call `search_plugins("keyword")` to find relevant plugins by feature/name
+2. Call `get_plugin("slug")` to get the exact params_schema and outputs
+3. Create the node with correct params and outputs from the plugin schema
+
+**SubFlowNode full structure:**
 ```json
 {
-  "slug": "plugin-slug",
-  "params": {"param1": "value1"},
-  "pluginName": "Plugin Display Name",
-  "pluginDescription": "What this plugin does"
+  "type": "SubFlowNode",
+  "data": {
+    "slug": "plugin-slug",
+    "pluginName": "Plugin Display Name",
+    "pluginDescription": "What this plugin does",
+    "params": {"param1": "value1"},
+    "paramsSchema": { "<exact params_schema from get_plugin()>" },
+    "outputs": [ {"name": "success", "description": "..."} ]
+  }
 }
 ```
 Edges from SubFlowNode use `sourceHandle` = output name (e.g. `"success"`, `"error"`, `"found"`, `"not_found"`).
 
-**CRITICAL SubFlow rules:**
-- **NEVER create a SubFlowNode with a slug you invented** — only use slugs from the AVAILABLE PLUGINS list below
-- **NEVER modify an existing SubFlowNode** from the user's current flow — preserve slug, params, paramsSchema, outputs exactly
-- If you need functionality that a plugin provides, use that plugin's exact slug
+**SubFlow rules:**
+- **ALWAYS call `search_plugins` then `get_plugin` before creating a SubFlowNode** — use exact slug and schema
+- **NEVER invent a slug** — only use slugs returned by `search_plugins`/`get_plugin`
+- **You CAN and SHOULD modify existing SubFlowNode params** when the user asks — but get fresh data from `get_plugin` first
 - If no suitable plugin exists, use standard nodes instead
 
 
@@ -478,8 +490,8 @@ Use `{{variable_name}}` in any text field:
    To wait for structured form input: use SubFlowNode(slug:form-collector).
 10. **CommandTriggerNode MUST always have `"global": true`** — without it the command will not work. \
     Always include `"global": true` and `"withArgs": false` in every CommandTriggerNode data.
-11. **NEVER modify existing SubFlowNode nodes** from the user's current flow. Copy them verbatim. \
-    SubFlow nodes have custom dynamic structure — changing slug/params will break the plugin.
+11. **For SubFlowNode: always call `search_plugins` then `get_plugin` first.** \
+    Use the exact slug, paramsSchema, and outputs returned by the tool. Never invent slugs.
 12. State is preserved across trigger waits via context
 
 ## FLOW GENERATION INSTRUCTIONS

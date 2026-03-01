@@ -8,12 +8,14 @@ import re
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.tools import BaseTool
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field
 
+from botmother_agent.plugins import PLUGIN_TOOLS
 from botmother_agent.prompts import FLOW_GENERATION_PROMPT, SYSTEM_PROMPT
 from botmother_agent.validator import format_errors, validate_flow, fix_flow_json
 
@@ -50,15 +52,42 @@ def _get_llm() -> ChatOpenAI:
     return ChatOpenAI(**kwargs)
 
 
+_TOOL_MAP: dict[str, BaseTool] = {t.name: t for t in PLUGIN_TOOLS}
+
+
+def _invoke_with_tools(llm: ChatOpenAI, messages: list, max_tool_rounds: int = 5) -> AIMessage:
+    """Invoke LLM with plugin tools available; execute tool calls until done."""
+    llm_with_tools = llm.bind_tools(PLUGIN_TOOLS)
+    current_messages = list(messages)
+    for _ in range(max_tool_rounds):
+        response = llm_with_tools.invoke(current_messages)
+        if not getattr(response, "tool_calls", None):
+            return response
+        current_messages.append(response)
+        for tc in response.tool_calls:
+            tool_fn = _TOOL_MAP.get(tc["name"])
+            if tool_fn:
+                try:
+                    result = tool_fn.invoke(tc["args"])
+                except Exception as e:
+                    result = f"Tool error: {e}"
+            else:
+                result = f"Unknown tool: {tc['name']}"
+            current_messages.append(ToolMessage(content=str(result), tool_call_id=tc["id"]))
+    # Final call without tools to force a text response
+    return llm.invoke(current_messages)
+
+
 # ── Node functions ───────────────────────────────────────────────────────
 
 def _plugins_context(state: AgentState) -> str:
-    """Build plugins section for system prompt."""
+    """Build plugins hint section for system prompt."""
     if not state.available_plugins:
         return ""
     return (
-        "\n\n## AVAILABLE PLUGINS (SubFlowNode slugs)\n"
-        "Use ONLY these slugs when creating SubFlowNode. Never invent slugs.\n"
+        "\n\n## AVAILABLE PLUGINS OVERVIEW\n"
+        "Use `search_plugins(query)` to search and `get_plugin(slug)` to get full details.\n"
+        "Quick overview (call get_plugin for full schema before using):\n"
         + state.available_plugins
     )
 
@@ -71,7 +100,8 @@ def _existing_flow_context(state: AgentState) -> str:
         "\n\n## EXISTING PROJECT FLOW\n"
         "The user already has the following flow. "
         "Incorporate and extend it — do NOT remove existing nodes/edges unless explicitly asked. "
-        "**CRITICAL: Copy all SubFlowNode nodes VERBATIM — do not change their slug, params, or any field.**\n"
+        "If SubFlowNodes are present you may modify their params, but call `get_plugin(slug)` first "
+        "to get the correct schema.\n"
         "```json\n" + state.existing_flow + "\n```"
     )
 
@@ -86,7 +116,7 @@ def chat_node(state: AgentState) -> dict[str, Any]:
 
     sys_msg = SystemMessage(content=system_content)
     messages = [sys_msg] + list(state.messages)
-    response = llm.invoke(messages)
+    response = _invoke_with_tools(llm, messages)
 
     new_phase = _detect_phase(state, response.content)
     flow_json = _extract_flow_json(response.content)
@@ -129,7 +159,7 @@ def generate_flow_node(state: AgentState) -> dict[str, Any]:
     gen_msg = HumanMessage(content=FLOW_GENERATION_PROMPT.format(requirements=req_text))
 
     messages = [sys_msg] + list(state.messages) + [gen_msg]
-    response = llm.invoke(messages)
+    response = _invoke_with_tools(llm, messages)
 
     flow_json = _extract_flow_json(response.content)
 

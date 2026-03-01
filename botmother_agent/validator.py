@@ -196,17 +196,10 @@ def validate_flow(flow_json: str) -> list[str]:
 def fix_flow(flow: dict, existing_flow: dict | None = None) -> dict:
     """Auto-fix common issues in a flow dict (mutates and returns it).
 
-    existing_flow: the original project flow — used to restore SubFlowNodes verbatim.
+    existing_flow: reserved for future use (not used currently).
     """
     default_edge_style = {"stroke": "#495057", "strokeWidth": 4}
     default_marker_end = {"type": "arrow", "color": "#495057", "width": 30, "height": 30}
-
-    # Build lookup of existing SubFlowNodes by id (to restore them verbatim)
-    existing_subflows: dict[str, dict] = {}
-    if existing_flow:
-        for node in existing_flow.get("nodes", []):
-            if node.get("type") == "SubFlowNode":
-                existing_subflows[node["id"]] = node
 
     # Remove nodes that don't exist in the engine
     REMOVED_NODE_TYPES = {"CallbackButtonTriggerNode", "ReplyButtonTriggerNode"}
@@ -217,10 +210,6 @@ def fix_flow(flow: dict, existing_flow: dict | None = None) -> dict:
         if ntype in REMOVED_NODE_TYPES:
             removed_node_ids.add(node.get("id", ""))
             continue  # drop it
-        if ntype == "SubFlowNode" and node.get("id") in existing_subflows:
-            # Restore the original SubFlowNode verbatim — agent must not modify it
-            kept_nodes.append(existing_subflows[node["id"]])
-            continue
         if ntype == "CommandTriggerNode":
             data = node.setdefault("data", {})
             data["global"] = True
