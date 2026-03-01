@@ -51,9 +51,10 @@ def startup():
         logging.warning(f"Database init skipped: {e}")
 
 
-# ── In-memory message cache (messages aren't serializable to DB easily) ──
+# ── In-memory caches ─────────────────────────────────────────────────────
 
 _msg_cache: dict[str, list] = {}
+_user_cache: set[str] = set()  # user_ids already upserted this process lifetime
 
 
 # ── Request / Response Models ────────────────────────────────────────────
@@ -151,15 +152,19 @@ class MessageItem(BaseModel):
 # ── Helpers ──────────────────────────────────────────────────────────────
 
 def _ensure_user(user: TokenPayload) -> None:
-    """Upsert user from JWT claims into local DB."""
+    """Upsert user from JWT claims into local DB — skipped if already seen this session."""
+    uid = str(user.user_id)
+    if uid in _user_cache:
+        return
     db.upsert_user(
-        user_id=str(user.user_id),
+        user_id=uid,
         email=user.email,
         username=user.username,
         first_name=user.first_name,
         last_name=user.last_name,
         role=user.role,
     )
+    _user_cache.add(uid)
 
 
 def _uid() -> str:

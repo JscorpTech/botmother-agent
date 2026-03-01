@@ -9,15 +9,31 @@ from typing import Any
 
 import psycopg2
 import psycopg2.extras
+import psycopg2.pool
 
 _DATABASE_URL = os.environ.get("DATABASE_URL", "")
+
+# Connection pool — reuses connections instead of creating a new one per request
+_pool: psycopg2.pool.ThreadedConnectionPool | None = None
+
+
+def _get_pool() -> psycopg2.pool.ThreadedConnectionPool:
+    global _pool
+    if _pool is None:
+        if not _DATABASE_URL:
+            raise RuntimeError("DATABASE_URL environment variable is not set")
+        _pool = psycopg2.pool.ThreadedConnectionPool(
+            minconn=2,
+            maxconn=10,
+            dsn=_DATABASE_URL,
+        )
+    return _pool
 
 
 @contextmanager
 def get_db():
-    if not _DATABASE_URL:
-        raise RuntimeError("DATABASE_URL environment variable is not set")
-    conn = psycopg2.connect(_DATABASE_URL)
+    pool = _get_pool()
+    conn = pool.getconn()
     conn.autocommit = False
     try:
         yield conn
@@ -26,8 +42,7 @@ def get_db():
         conn.rollback()
         raise
     finally:
-        conn.close()
-
+        pool.putconn(conn)
 
 def _row_to_dict(cursor) -> dict | None:
     row = cursor.fetchone()

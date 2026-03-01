@@ -279,8 +279,15 @@ def _strip_flow_json(text: str) -> str:
 
 # ── Graph Builder ────────────────────────────────────────────────────────
 
+_compiled_agent = None
+
+
 def create_agent() -> StateGraph:
-    """Create the LangGraph agent."""
+    """Create (or return cached) LangGraph agent."""
+    global _compiled_agent
+    if _compiled_agent is not None:
+        return _compiled_agent
+
     graph = StateGraph(AgentState)
 
     graph.add_node("chat", chat_node)
@@ -303,7 +310,8 @@ def create_agent() -> StateGraph:
         "end": END,
     })
 
-    return graph.compile()
+    _compiled_agent = graph.compile()
+    return _compiled_agent
 
 
 def save_flow(flow_json: str, filename: str | None = None) -> str:
