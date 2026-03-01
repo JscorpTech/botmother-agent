@@ -33,10 +33,20 @@ A flow consists of `nodes` and `edges`:
     {"id": "unique_id", "type": "NodeType", "data": {...}, "position": {"x": 0, "y": 0}}
   ],
   "edges": [
-    {"id": "edge_id", "source": "node_id_1", "target": "node_id_2", "sourceHandle": "optional"}
+    {
+      "id": "edge_id",
+      "source": "node_id_1",
+      "target": "node_id_2",
+      "sourceHandle": "optional",
+      "type": "floating",
+      "animated": false,
+      "style": {"stroke": "#495057", "strokeWidth": 4},
+      "markerEnd": {"type": "arrow", "color": "#495057", "width": 30, "height": 30}
+    }
   ]
 }
 ```
+**Every edge MUST have `"type": "floating"`, `"style"`, and `"markerEnd"` exactly as shown above.**
 
 ## ALL SUPPORTED NODE TYPES
 
