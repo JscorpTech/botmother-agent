@@ -11,7 +11,6 @@ TRIGGER_TYPES = {
     "CommandTriggerNode",
     "MessageTriggerNode",
     "CallbackQueryTriggerNode",
-    "CallbackButtonTriggerNode",
     "ReplyButtonTriggerNode",
     "CronTriggerNode",
 }
@@ -200,13 +199,28 @@ def fix_flow(flow: dict) -> dict:
     default_edge_style = {"stroke": "#495057", "strokeWidth": 4}
     default_marker_end = {"type": "arrow", "color": "#495057", "width": 30, "height": 30}
 
+    # Remove nodes that don't exist in the engine
+    removed_node_ids: set[str] = set()
+    kept_nodes = []
     for node in flow.get("nodes", []):
-        if node.get("type") == "CommandTriggerNode":
+        ntype = node.get("type")
+        if ntype == "CallbackButtonTriggerNode":
+            removed_node_ids.add(node.get("id", ""))
+            continue  # drop it
+        if ntype == "CommandTriggerNode":
             data = node.setdefault("data", {})
-            data["global"] = True  # enforce — never allow global=false
+            data["global"] = True
             data.setdefault("withArgs", False)
+        kept_nodes.append(node)
+    flow["nodes"] = kept_nodes
 
-    for edge in flow.get("edges", []):
+    # Remove edges connected to dropped nodes
+    flow["edges"] = [
+        e for e in flow.get("edges", [])
+        if e.get("source") not in removed_node_ids and e.get("target") not in removed_node_ids
+    ]
+
+    for edge in flow["edges"]:
         edge.setdefault("type", "floating")
         edge.setdefault("animated", False)
         edge.setdefault("style", default_edge_style)

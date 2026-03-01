@@ -20,7 +20,6 @@ class NodeType(str, Enum):
     COMMAND_TRIGGER = "CommandTriggerNode"
     MESSAGE_TRIGGER = "MessageTriggerNode"
     CALLBACK_QUERY_TRIGGER = "CallbackQueryTriggerNode"
-    CALLBACK_BUTTON_TRIGGER = "CallbackButtonTriggerNode"
     REPLY_BUTTON_TRIGGER = "ReplyButtonTriggerNode"
     CRON_TRIGGER = "CronTriggerNode"
 

@@ -82,7 +82,7 @@ A flow consists of `nodes` and `edges`:
 }
 ```
 
-**CallbackQueryTriggerNode** — matches inline button clicks
+**CallbackQueryTriggerNode** — matches inline button clicks (for standalone callback handling only)
 ```json
 {
   "filter": "any|equals|contains|starts_with|regex|collection",
@@ -90,13 +90,8 @@ A flow consists of `nodes` and `edges`:
   "state": {"key": "var_name", "type": "callback|collection_id|full_data"}
 }
 ```
-
-**CallbackButtonTriggerNode** — matches specific button callbacks
-```json
-{
-  "selectedCallbacks": ["callback_value_1", "callback_value_2"]
-}
-```
+⚠️ **IMPORTANT**: For `EditOrSendMessageNode` menus, do NOT use `CallbackQueryTriggerNode` or any callback trigger.
+Button clicks are handled directly via button edges: `sourceHandle: "target-handler-{nodeId}-{buttonText}"`.
 
 **ReplyButtonTriggerNode** — matches reply keyboard button text
 ```json
@@ -461,7 +456,9 @@ Use `{{variable_name}}` in any text field:
 2. Triggers are entry points — they are NOT executed as actions
 3. Use unique IDs for all nodes and edges
 4. Position nodes logically (x for columns, y for rows)
-5. Inline keyboard buttons need CallbackButtonTriggerNode or CallbackQueryTriggerNode to handle clicks
+5. **NEVER use `CallbackButtonTriggerNode` — it does not exist in the engine.** \
+   For `EditOrSendMessageNode` button clicks, use button edges directly (sourceHandle: `target-handler-{nodeId}-{buttonText}`). \
+   `CallbackQueryTriggerNode` is only for standalone global callback handling outside of menus.
 6. After sending a message with inline buttons, the engine auto-pauses waiting for callback — \
    use EditOrSendMessageNode for menu screens so the message is edited (not duplicated) on navigation
 7. EditOrSendMessageNode button edges: sourceHandle format is `target-handler-{nodeId}-{buttonText}` \
