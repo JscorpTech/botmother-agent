@@ -57,6 +57,10 @@ _msg_cache: dict[str, list] = {}
 
 # ── Request / Response Models ────────────────────────────────────────────
 
+class CreateSessionRequest(BaseModel):
+    existing_flow: dict | None = None
+
+
 class CreateSessionResponse(BaseModel):
     session_id: str
     message: str
@@ -241,11 +245,12 @@ def list_sessions(user: TokenPayload = Depends(get_current_user)):
 
 
 @app.post("/sessions", response_model=CreateSessionResponse, tags=["sessions"])
-def create_session(user: TokenPayload = Depends(get_current_user)):
-    """Create a new conversation session."""
+def create_session(req: CreateSessionRequest = CreateSessionRequest(), user: TokenPayload = Depends(get_current_user)):
+    """Create a new conversation session. Optionally pass existing_flow to give agent context."""
     _ensure_user(user)
     session_id = _uid()
-    db.create_session(session_id, str(user.user_id))
+    existing_flow_str = json.dumps(req.existing_flow, ensure_ascii=False) if req.existing_flow else None
+    db.create_session(session_id, str(user.user_id), existing_flow=existing_flow_str)
     return CreateSessionResponse(
         session_id=session_id,
         message="Session created",
@@ -293,6 +298,7 @@ def chat(session_id: str, req: ChatRequest, user: TokenPayload = Depends(get_cur
         "messages": messages,
         "requirements": reqs,
         "flow_json": s.get("flow_json"),
+        "existing_flow": s.get("existing_flow"),
         "phase": s["phase"],
         "turn_count": s["turn_count"],
     }

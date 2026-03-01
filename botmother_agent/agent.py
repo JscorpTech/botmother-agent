@@ -27,6 +27,7 @@ class AgentState(BaseModel):
     messages: Annotated[list[BaseMessage], add_messages] = Field(default_factory=list)
     requirements: list[str] = Field(default_factory=list)
     flow_json: str | None = None
+    existing_flow: str | None = None  # current project flow JSON passed from constructor
     phase: str = "chat"  # chat | gathering | generating | validating | done
     turn_count: int = 0
     validation_retries: int = 0
@@ -54,7 +55,18 @@ def chat_node(state: AgentState) -> dict[str, Any]:
     """Main conversation node — talks with user, decides next step."""
     llm = _get_llm()
 
-    sys_msg = SystemMessage(content=SYSTEM_PROMPT + "\n\n" + _phase_instructions(state))
+    system_content = SYSTEM_PROMPT + "\n\n" + _phase_instructions(state)
+    if state.existing_flow:
+        system_content += (
+            "\n\n## EXISTING PROJECT FLOW\n"
+            "The user already has the following flow in their project. "
+            "When generating a new or updated flow, you MUST incorporate and extend this existing flow — "
+            "do NOT discard existing nodes/edges unless explicitly asked. "
+            "Merge new functionality with the existing structure:\n"
+            "```json\n" + state.existing_flow + "\n```"
+        )
+
+    sys_msg = SystemMessage(content=system_content)
     messages = [sys_msg] + list(state.messages)
     response = llm.invoke(messages)
 
@@ -91,7 +103,15 @@ def generate_flow_node(state: AgentState) -> dict[str, Any]:
 
     req_text = "\n".join(f"- {r}" for r in state.requirements) if state.requirements else "See conversation above."
 
-    sys_msg = SystemMessage(content=SYSTEM_PROMPT)
+    system_content = SYSTEM_PROMPT
+    if state.existing_flow:
+        system_content += (
+            "\n\n## EXISTING PROJECT FLOW\n"
+            "Incorporate and extend this existing flow — do NOT remove existing nodes/edges:\n"
+            "```json\n" + state.existing_flow + "\n```"
+        )
+
+    sys_msg = SystemMessage(content=system_content)
     gen_msg = HumanMessage(content=FLOW_GENERATION_PROMPT.format(requirements=req_text))
 
     messages = [sys_msg] + list(state.messages) + [gen_msg]
