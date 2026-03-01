@@ -170,6 +170,25 @@ messageText can also be EditorJS blocks format:
 ```
 Connect the message node to edit via targetHandle "selected-message-target".
 
+**EditOrSendMessageNode** — smart edit or send based on context
+```json
+{
+  "messageText": "Menu text",
+  "keyboard": {
+    "active": "inline",
+    "inline": [
+      [{"text": "Option 1", "type": "callback", "value": "opt1"}],
+      [{"text": "Option 2", "type": "callback", "value": "opt2"}]
+    ]
+  }
+}
+```
+**Key behavior**: If triggered by an inline button click (callback_query exists in context) → EDITS \
+the existing message in place. Otherwise (command, first visit) → SENDS a new message.
+This is the RECOMMENDED node for menu navigation — always use this instead of separate \
+EditMessageNode + SendTextMessageNode pairs. Button edge routing: connect button sourceHandles \
+(`target-handler-{nodeId}-{buttonText}`) to the next screen node.
+
 **DeleteMessageNode** — delete a message
 ```json
 {}
@@ -410,8 +429,11 @@ Use `{{variable_name}}` in any text field:
 3. Use unique IDs for all nodes and edges
 4. Position nodes logically (x for columns, y for rows)
 5. Inline keyboard buttons need CallbackButtonTriggerNode or CallbackQueryTriggerNode to handle clicks
-6. After sending a message with inline buttons, the engine auto-pauses waiting for callback
-7. Reply keyboard buttons need ReplyButtonTriggerNode to handle selections
+6. After sending a message with inline buttons, the engine auto-pauses waiting for callback — \
+   use EditOrSendMessageNode for menu screens so the message is edited (not duplicated) on navigation
+7. EditOrSendMessageNode button edges: sourceHandle format is `target-handler-{nodeId}-{buttonText}` \
+   (use button TEXT, not value). These edges connect directly to the next screen node — no separate trigger needed.
+8. Reply keyboard buttons need ReplyButtonTriggerNode to handle selections
 8. State is preserved across trigger waits via context
 
 ## FLOW GENERATION INSTRUCTIONS

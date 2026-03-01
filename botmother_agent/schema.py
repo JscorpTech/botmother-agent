@@ -43,6 +43,7 @@ class NodeType(str, Enum):
 
     # Message operations
     EDIT_MESSAGE = "EditMessageNode"
+    EDIT_OR_SEND_MESSAGE = "EditOrSendMessageNode"
     DELETE_MESSAGE = "DeleteMessageNode"
     FORWARD_MESSAGE = "ForwardMessageNode"
     COPY_MESSAGE = "CopyMessageNode"

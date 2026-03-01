@@ -23,7 +23,7 @@ ALL_NODE_TYPES = TRIGGER_TYPES | {
     "SendLocationNode", "SendContactNode", "SendPollNode", "SendStickerNode",
     "SendMediaGroupNode", "SendVenueNode", "SendDiceNode",
     # Message ops
-    "EditMessageNode", "DeleteMessageNode", "ForwardMessageNode",
+    "EditMessageNode", "EditOrSendMessageNode", "DeleteMessageNode", "ForwardMessageNode",
     "CopyMessageNode", "PinMessageNode", "UnpinMessageNode", "UnpinAllMessagesNode",
     # Interactive
     "ChatActionNode", "CallbackQueryAnswerNode", "CheckMembershipNode",
