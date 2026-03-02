@@ -1,4 +1,4 @@
-"""PostgreSQL database layer for user data, sessions, and generated flows."""
+"""PostgreSQL database layer for sessions and generated flows."""
 
 from __future__ import annotations
 
@@ -13,7 +13,6 @@ import psycopg2.pool
 
 _DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
-# Connection pool — reuses connections instead of creating a new one per request
 _pool: psycopg2.pool.ThreadedConnectionPool | None = None
 
 
@@ -44,6 +43,7 @@ def get_db():
     finally:
         pool.putconn(conn)
 
+
 def _row_to_dict(cursor) -> dict | None:
     row = cursor.fetchone()
     if not row:
@@ -65,21 +65,9 @@ def init_db() -> None:
     with get_db() as conn:
         cur = conn.cursor()
         cur.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                id TEXT PRIMARY KEY,
-                email TEXT,
-                username TEXT,
-                first_name TEXT,
-                last_name TEXT,
-                role TEXT DEFAULT 'user',
-                created_at TIMESTAMP DEFAULT NOW(),
-                updated_at TIMESTAMP DEFAULT NOW()
-            )
-        """)
-        cur.execute("""
             CREATE TABLE IF NOT EXISTS sessions (
                 id TEXT PRIMARY KEY,
-                user_id TEXT NOT NULL REFERENCES users(id),
+                user_id TEXT NOT NULL,
                 phase TEXT DEFAULT 'chat',
                 turn_count INTEGER DEFAULT 0,
                 requirements TEXT DEFAULT '[]',
@@ -90,17 +78,11 @@ def init_db() -> None:
                 updated_at TIMESTAMP DEFAULT NOW()
             )
         """)
-        cur.execute("""
-            CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)
-        """)
-        # Migration: add project_id column if it doesn't exist (for existing deployments)
-        cur.execute("""
-            ALTER TABLE sessions ADD COLUMN IF NOT EXISTS project_id TEXT
-        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)")
         cur.execute("""
             CREATE TABLE IF NOT EXISTS flows (
                 id SERIAL PRIMARY KEY,
-                user_id TEXT NOT NULL REFERENCES users(id),
+                user_id TEXT NOT NULL,
                 session_id TEXT REFERENCES sessions(id),
                 name TEXT,
                 description TEXT,
@@ -109,45 +91,7 @@ def init_db() -> None:
                 updated_at TIMESTAMP DEFAULT NOW()
             )
         """)
-        cur.execute("""
-            CREATE INDEX IF NOT EXISTS idx_flows_user ON flows(user_id)
-        """)
-
-
-# ── Users ────────────────────────────────────────────────────────────────
-
-def upsert_user(
-    user_id: str,
-    email: str | None = None,
-    username: str | None = None,
-    first_name: str | None = None,
-    last_name: str | None = None,
-    role: str = "user",
-) -> dict:
-    with get_db() as conn:
-        cur = conn.cursor()
-        cur.execute(
-            """INSERT INTO users (id, email, username, first_name, last_name, role)
-               VALUES (%s, %s, %s, %s, %s, %s)
-               ON CONFLICT(id) DO UPDATE SET
-                 email = COALESCE(EXCLUDED.email, users.email),
-                 username = COALESCE(EXCLUDED.username, users.username),
-                 first_name = COALESCE(EXCLUDED.first_name, users.first_name),
-                 last_name = COALESCE(EXCLUDED.last_name, users.last_name),
-                 role = EXCLUDED.role,
-                 updated_at = NOW()
-            """,
-            (str(user_id), email, username, first_name, last_name, role),
-        )
-        cur.execute("SELECT * FROM users WHERE id = %s", (str(user_id),))
-        return _row_to_dict(cur)
-
-
-def get_user(user_id: str) -> dict | None:
-    with get_db() as conn:
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM users WHERE id = %s", (str(user_id),))
-        return _row_to_dict(cur)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_flows_user ON flows(user_id)")
 
 
 # ── Sessions ─────────────────────────────────────────────────────────────

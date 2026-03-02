@@ -48,16 +48,17 @@ def startup():
         db.init_db()
     except Exception as e:
         import logging
+
         logging.warning(f"Database init skipped: {e}")
 
 
 # ── In-memory caches ─────────────────────────────────────────────────────
 
 _msg_cache: dict[str, list] = {}
-_user_cache: set[str] = set()  # user_ids already upserted this process lifetime
 
 
 # ── Request / Response Models ────────────────────────────────────────────
+
 
 class CreateSessionRequest(BaseModel):
     project_id: str | None = None
@@ -133,38 +134,12 @@ class GenerateResponse(BaseModel):
     flow_id: int | None = None
 
 
-class UserProfile(BaseModel):
-    id: str
-    email: str | None = None
-    username: str | None = None
-    first_name: str | None = None
-    last_name: str | None = None
-    role: str
-    created_at: dt
-    updated_at: dt
-
-
 class MessageItem(BaseModel):
     role: str
     content: str
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────
-
-def _ensure_user(user: TokenPayload) -> None:
-    """Upsert user from JWT claims into local DB — skipped if already seen this session."""
-    uid = str(user.user_id)
-    if uid in _user_cache:
-        return
-    db.upsert_user(
-        user_id=uid,
-        email=user.email,
-        username=user.username,
-        first_name=user.first_name,
-        last_name=user.last_name,
-        role=user.role,
-    )
-    _user_cache.add(uid)
 
 
 def _uid() -> str:
@@ -200,6 +175,7 @@ _plugins_cache_time: float = 0.0
 def _fetch_plugins() -> str | None:
     """Fetch available plugins from the plugin engine API."""
     import time
+
     global _plugins_cache, _plugins_cache_time
 
     # Return cached result if fresh (5 min TTL)
@@ -210,7 +186,11 @@ def _fetch_plugins() -> str | None:
     if not plugin_api:
         return None
     try:
-        resp = httpx.get(f"{plugin_api}/subflows", params={"active": "true", "per_page": 100}, timeout=5)
+        resp = httpx.get(
+            f"{plugin_api}/subflows",
+            params={"active": "true", "per_page": 100},
+            timeout=5,
+        )
         if resp.status_code == 200:
             data = resp.json()
             plugins = data.get("data", data) if isinstance(data, dict) else data
@@ -221,7 +201,9 @@ def _fetch_plugins() -> str | None:
                 name = p.get("name", "")
                 desc = p.get("description", "")
                 outputs = [o.get("name") for o in p.get("outputs", [])]
-                params = list((p.get("params_schema") or {}).get("properties", {}).keys())
+                params = list(
+                    (p.get("params_schema") or {}).get("properties", {}).keys()
+                )
                 line = f"- slug: `{slug}` | name: {name} | {desc}"
                 if params:
                     line += f" | params: {', '.join(params)}"
@@ -286,22 +268,26 @@ def _save_messages(session_id: str, messages: list) -> None:
 
 # ── Auth: /me ────────────────────────────────────────────────────────────
 
-@app.get("/me", response_model=UserProfile, tags=["auth"])
+
+@app.get("/me", tags=["auth"])
 def get_me(user: TokenPayload = Depends(get_current_user)):
-    """Get current user profile."""
-    _ensure_user(user)
-    row = db.get_user(str(user.user_id))
-    if not row:
-        raise HTTPException(status_code=404, detail="User not found")
-    return UserProfile(id=row["id"], **{k: row[k] for k in ("email", "username", "first_name", "last_name", "role", "created_at", "updated_at")})
+    """Get current user profile from JWT token."""
+    return {
+        "id": str(user.user_id),
+        "email": user.email,
+        "username": user.username,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "role": user.role,
+    }
 
 
 # ── Sessions ─────────────────────────────────────────────────────────────
 
+
 @app.get("/sessions", response_model=list[SessionListItem], tags=["sessions"])
 def list_sessions(user: TokenPayload = Depends(get_current_user)):
     """List all sessions for current user."""
-    _ensure_user(user)
     rows = db.list_sessions(str(user.user_id))
     return [
         SessionListItem(
@@ -317,9 +303,11 @@ def list_sessions(user: TokenPayload = Depends(get_current_user)):
 
 
 @app.post("/sessions", response_model=CreateSessionResponse, tags=["sessions"])
-def create_session(req: CreateSessionRequest = CreateSessionRequest(), user: TokenPayload = Depends(get_current_user)):
+def create_session(
+    req: CreateSessionRequest = CreateSessionRequest(),
+    user: TokenPayload = Depends(get_current_user),
+):
     """Create a new conversation session. Pass project_id so agent fetches the live flow."""
-    _ensure_user(user)
     session_id = _uid()
     db.create_session(session_id, str(user.user_id), project_id=req.project_id)
     return CreateSessionResponse(
@@ -331,7 +319,6 @@ def create_session(req: CreateSessionRequest = CreateSessionRequest(), user: Tok
 @app.get("/sessions/{session_id}", response_model=SessionInfo, tags=["sessions"])
 def get_session(session_id: str, user: TokenPayload = Depends(get_current_user)):
     """Get session info."""
-    _ensure_user(user)
     s = _get_session_or_404(session_id, str(user.user_id))
     reqs = json.loads(s.get("requirements") or "[]")
     return SessionInfo(
@@ -348,16 +335,19 @@ def get_session(session_id: str, user: TokenPayload = Depends(get_current_user))
 @app.delete("/sessions/{session_id}", tags=["sessions"])
 def delete_session(session_id: str, user: TokenPayload = Depends(get_current_user)):
     """Delete a session."""
-    _ensure_user(user)
     db.delete_session(session_id, str(user.user_id))
     _msg_cache.pop(session_id, None)
     return {"detail": "Session deleted"}
 
 
 @app.post("/sessions/{session_id}/chat", response_model=ChatResponse, tags=["sessions"])
-def chat(session_id: str, req: ChatRequest, request: Request, user: TokenPayload = Depends(get_current_user)):
+def chat(
+    session_id: str,
+    req: ChatRequest,
+    request: Request,
+    user: TokenPayload = Depends(get_current_user),
+):
     """Send a message and get agent response."""
-    _ensure_user(user)
     s = _get_session_or_404(session_id, str(user.user_id))
 
     messages = _load_messages(session_id, s)
@@ -427,7 +417,6 @@ def chat(session_id: str, req: ChatRequest, request: Request, user: TokenPayload
 @app.get("/sessions/{session_id}/flow", tags=["sessions"])
 def get_session_flow(session_id: str, user: TokenPayload = Depends(get_current_user)):
     """Get the generated flow JSON for a session."""
-    _ensure_user(user)
     s = _get_session_or_404(session_id, str(user.user_id))
     if not s.get("flow_json"):
         raise HTTPException(status_code=404, detail="No flow generated yet")
@@ -441,7 +430,6 @@ def save_session_flow(
     user: TokenPayload = Depends(get_current_user),
 ):
     """Save the generated flow to database."""
-    _ensure_user(user)
     s = _get_session_or_404(session_id, str(user.user_id))
     if not s.get("flow_json"):
         raise HTTPException(status_code=404, detail="No flow generated yet")
@@ -467,17 +455,26 @@ def save_session_flow(
 @app.post("/sessions/{session_id}/reset", tags=["sessions"])
 def reset_session(session_id: str, user: TokenPayload = Depends(get_current_user)):
     """Reset session conversation."""
-    _ensure_user(user)
     _get_session_or_404(session_id, str(user.user_id))
-    db.update_session(session_id, phase="chat", turn_count=0, requirements=[], flow_json=None, messages_json="[]")
+    db.update_session(
+        session_id,
+        phase="chat",
+        turn_count=0,
+        requirements=[],
+        flow_json=None,
+        messages_json="[]",
+    )
     _msg_cache.pop(session_id, None)
     return {"detail": "Session reset"}
 
 
-@app.get("/sessions/{session_id}/history", response_model=list[MessageItem], tags=["sessions"])
+@app.get(
+    "/sessions/{session_id}/history",
+    response_model=list[MessageItem],
+    tags=["sessions"],
+)
 def get_history(session_id: str, user: TokenPayload = Depends(get_current_user)):
     """Get conversation history."""
-    _ensure_user(user)
     s = _get_session_or_404(session_id, str(user.user_id))
     messages = _load_messages(session_id, s)
     items = _serialize_messages(messages)
@@ -486,10 +483,10 @@ def get_history(session_id: str, user: TokenPayload = Depends(get_current_user))
 
 # ── Flows (CRUD) ─────────────────────────────────────────────────────────
 
+
 @app.get("/flows", response_model=list[FlowListItem], tags=["flows"])
 def list_flows(user: TokenPayload = Depends(get_current_user)):
     """List all saved flows for current user."""
-    _ensure_user(user)
     rows = db.list_flows(str(user.user_id))
     return [FlowListItem(**r) for r in rows]
 
@@ -497,7 +494,6 @@ def list_flows(user: TokenPayload = Depends(get_current_user)):
 @app.get("/flows/{flow_id}", response_model=FlowOut, tags=["flows"])
 def get_flow(flow_id: int, user: TokenPayload = Depends(get_current_user)):
     """Get a saved flow by ID."""
-    _ensure_user(user)
     row = db.get_flow(flow_id, str(user.user_id))
     if not row:
         raise HTTPException(status_code=404, detail="Flow not found")
@@ -515,13 +511,13 @@ def get_flow(flow_id: int, user: TokenPayload = Depends(get_current_user)):
 @app.delete("/flows/{flow_id}", tags=["flows"])
 def delete_flow(flow_id: int, user: TokenPayload = Depends(get_current_user)):
     """Delete a saved flow."""
-    _ensure_user(user)
     if not db.delete_flow(flow_id, str(user.user_id)):
         raise HTTPException(status_code=404, detail="Flow not found")
     return {"detail": "Flow deleted"}
 
 
 # ── One-shot generation ──────────────────────────────────────────────────
+
 
 @app.post("/generate", response_model=GenerateResponse, tags=["generate"])
 def generate_flow(
@@ -530,7 +526,6 @@ def generate_flow(
     user: TokenPayload = Depends(get_current_user),
 ):
     """One-shot flow generation — describe your bot, get flow JSON."""
-    _ensure_user(user)
     agent = create_agent()
 
     prompt = (
@@ -557,7 +552,10 @@ def generate_flow(
                     break
 
     if not flow_json_str:
-        raise HTTPException(status_code=422, detail="Could not generate a valid flow. Try providing more details.")
+        raise HTTPException(
+            status_code=422,
+            detail="Could not generate a valid flow. Try providing more details.",
+        )
 
     flow_dict = json.loads(flow_json_str)
 
@@ -576,6 +574,7 @@ def generate_flow(
 
 
 # ── Health ───────────────────────────────────────────────────────────────
+
 
 @app.get("/health", tags=["system"])
 def health():
